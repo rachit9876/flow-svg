@@ -1,6 +1,6 @@
 {
-  "folder": "cdn-public",
-  "svgs": [
-    "flow.svg"
-  ]
+  "projects": {
+    "cdn-public": "flow.svg",
+    "my-project": "diagram.svg"
+  }
 }

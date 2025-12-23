@@ -120,9 +120,6 @@ img{
 </head>
 <body>
 <div class="controls">
-  <select id="svgSelector" style="padding:6px 12px;border-radius:6px;border:1px solid #ddd;font-size:14px;cursor:pointer">
-    <option>Loading...</option>
-  </select>
   <label>
     <input type="checkbox" id="zoomToggle"> Zoom on Hover
   </label>
@@ -137,15 +134,17 @@ img{
 </div>
 
 <script>
-fetch('svgs.json')
-  .then(r => r.json())
-  .then(data => {
-    const selector = document.getElementById('svgSelector');
-    const img = document.getElementById('svgImage');
-    selector.innerHTML = data.svgs.map(svg => `<option value="${data.folder}/${svg}">${svg}</option>`).join('');
-    img.src = `${data.folder}/${data.svgs[0]}`;
-    selector.addEventListener('change', e => img.src = e.target.value);
-  });
+function loadSVG() {
+  const path = window.location.hash.slice(1) || 'cdn-public';
+  fetch('svgs.json')
+    .then(r => r.json())
+    .then(data => {
+      const project = data.projects[path];
+      if(project) document.getElementById('svgImage').src = `${path}/${project}`;
+    });
+}
+loadSVG();
+window.addEventListener('hashchange', loadSVG);
 
 if(window.innerWidth > 768) {
   const diagram = document.getElementById('diagram');
