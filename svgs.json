@@ -1,7 +1,8 @@
 {
   "projects": {
     "cdn-public": "flow.svg",
-    "courage-networks": "flow.svg"
+    "courage-networks": "flow.svg",
+    "schan": "flow.svg"
   }
 
 }
