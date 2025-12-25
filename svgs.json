@@ -1,6 +1,7 @@
 {
   "projects": {
     "cdn-public": "flow.svg",
-    "my-project": "diagram.svg"
-  }
+    "courage-networks": "flow.svg"
+  },
+
 }
