@@ -134,15 +134,65 @@ img{
 </div>
 
 <script>
-function loadSVG() {
-  const path = window.location.hash.slice(1) || 'cdn-public';
-  fetch('svgs.json')
-    .then(r => r.json())
-    .then(data => {
-      const project = data.projects[path];
-      if(project) document.getElementById('svgImage').src = `${path}/${project}`;
-    });
+function getProjectKeyFromHash() {
+  const raw = (window.location.hash || '').replace(/^#/, '').trim();
+  if (!raw) return 'cdn-public';
+  // Keep this strict to avoid path traversal and surprising fetches.
+  if (/^[a-z0-9_-]+$/i.test(raw)) return raw;
+  return 'cdn-public';
 }
+
+function resetZoomVisualState() {
+  const diagram = document.getElementById('diagram');
+  if (!diagram) return;
+  diagram.style.transform = 'scale(1)';
+  diagram.style.transformOrigin = 'center center';
+}
+
+async function loadSVG() {
+  const svgImage = document.getElementById('svgImage');
+  const path = getProjectKeyFromHash();
+
+  svgImage.alt = 'Loading SVG diagram…';
+  svgImage.setAttribute('aria-busy', 'true');
+  svgImage.removeAttribute('aria-label');
+  // Avoid showing a stale image while switching.
+  svgImage.removeAttribute('src');
+
+  resetZoomVisualState();
+
+  try {
+    const resp = await fetch('svgs.json', { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`Failed to load svgs.json (${resp.status})`);
+    const data = await resp.json();
+    const project = data?.projects?.[path];
+
+    if (!project) {
+      svgImage.alt = `No SVG found for “${path}”.`;
+      svgImage.setAttribute('aria-busy', 'false');
+      return;
+    }
+
+    svgImage.onload = () => {
+      svgImage.alt = `SVG diagram: ${path}`;
+      svgImage.setAttribute('aria-busy', 'false');
+      resetZoomVisualState();
+    };
+    svgImage.onerror = () => {
+      svgImage.alt = `Failed to load SVG for “${path}”.`;
+      svgImage.setAttribute('aria-busy', 'false');
+      svgImage.removeAttribute('src');
+      resetZoomVisualState();
+    };
+
+    svgImage.src = `${path}/${project}`;
+  } catch (err) {
+    console.error(err);
+    svgImage.alt = 'Failed to load SVG index.';
+    svgImage.setAttribute('aria-busy', 'false');
+  }
+}
+
 loadSVG();
 window.addEventListener('hashchange', loadSVG);
 
@@ -158,6 +208,12 @@ if(window.innerWidth > 768) {
   // State variable to track if we are currently zooming (to avoid conflicts)
   let isHovering = false;
 
+  // Throttle mousemove-driven updates to once per animation frame.
+  let pendingFrame = 0;
+  let lastOriginX = 50;
+  let lastOriginY = 50;
+  const baseTransition = getComputedStyle(diagram).transition;
+
   toggle.addEventListener('change', (e) => {
     zoomEnabled = e.target.checked;
     zoomLevel.disabled = !zoomEnabled;
@@ -166,8 +222,15 @@ if(window.innerWidth > 768) {
     if(zoomEnabled) {
       diagram.style.cursor = 'crosshair';
     } else {
+      isHovering = false;
+      if (pendingFrame) {
+        cancelAnimationFrame(pendingFrame);
+        pendingFrame = 0;
+      }
       diagram.style.cursor = 'default';
+      diagram.style.transition = baseTransition;
       diagram.style.transform = 'scale(1)';
+      diagram.style.transformOrigin = 'center center';
     }
   });
 
@@ -180,26 +243,42 @@ if(window.innerWidth > 768) {
     }
   });
 
+  container.addEventListener('mouseenter', () => {
+    if (!zoomEnabled) return;
+    isHovering = true;
+    // Disable transitions while actively tracking pointer to avoid animation churn.
+    diagram.style.transition = 'none';
+  });
+
   container.addEventListener('mousemove', (e) => {
     if (!zoomEnabled) return;
-    
-    isHovering = true;
+
     const rect = container.getBoundingClientRect();
-    // Calculate percentage position for transform-origin
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    diagram.style.transformOrigin = `${x}% ${y}%`;
-    diagram.style.transform = `scale(${zoom})`;
+    lastOriginX = ((e.clientX - rect.left) / rect.width) * 100;
+    lastOriginY = ((e.clientY - rect.top) / rect.height) * 100;
+
+    if (pendingFrame) return;
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = 0;
+      if (!zoomEnabled) return;
+      diagram.style.transformOrigin = `${lastOriginX}% ${lastOriginY}%`;
+      diagram.style.transform = `scale(${zoom})`;
+    });
   });
 
   container.addEventListener('mouseleave', () => {
     if (zoomEnabled) {
       isHovering = false;
+      if (pendingFrame) {
+        cancelAnimationFrame(pendingFrame);
+        pendingFrame = 0;
+      }
       diagram.style.transform = 'scale(1)';
       // Reset origin smoothly to center, or leave it for next entry? 
       // Resetting to center is usually safer to avoid jumps on re-entry
       diagram.style.transformOrigin = 'center center';
+      // Restore transitions for the snap-back animation.
+      diagram.style.transition = baseTransition;
     }
   });
 }
